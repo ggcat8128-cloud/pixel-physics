@@ -381,89 +381,259 @@ export class DisplayScene {
   }
 
   // Build the 6 Exploded Display Layers
+  // Create ITO Touch Grid texture (capacitive sensor mesh)
+  private createITOTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 1024;
+    const ctx = canvas.getContext('2d')!;
+    // Transparent background
+    ctx.clearRect(0, 0, 512, 1024);
+    ctx.fillStyle = 'rgba(100, 220, 255, 0.08)';
+    ctx.fillRect(0, 0, 512, 1024);
+    // Horizontal ITO electrodes (Rx lines)
+    ctx.strokeStyle = 'rgba(130, 230, 255, 0.70)';
+    ctx.lineWidth = 2;
+    for (let y = 32; y < 1024; y += 64) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+      // Diamond crosshatch nodes
+      for (let x = 32; x < 512; x += 64) {
+        ctx.fillStyle = 'rgba(0, 230, 255, 0.85)';
+        ctx.beginPath();
+        ctx.moveTo(x, y - 8); ctx.lineTo(x + 8, y);
+        ctx.lineTo(x, y + 8); ctx.lineTo(x - 8, y);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    // Vertical ITO electrodes (Tx lines)
+    ctx.strokeStyle = 'rgba(255, 200, 100, 0.55)';
+    ctx.lineWidth = 1.5;
+    for (let x = 32; x < 512; x += 64) {
+      ctx.setLineDash([6, 10]);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 1024); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // Label
+    ctx.fillStyle = 'rgba(0, 230, 255, 0.9)';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('ITO CAPACITIVE TOUCH GRID', 20, 30);
+    ctx.fillStyle = 'rgba(255, 200, 100, 0.8)';
+    ctx.font = '16px monospace';
+    ctx.fillText('Tx/Rx Mutual Capacitance Matrix', 20, 56);
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }
+
+  // Create Titanium chassis / logic board texture
+  private createChassisTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 1024;
+    const ctx = canvas.getContext('2d')!;
+    // Dark titanium background
+    const bg = ctx.createLinearGradient(0, 0, 512, 1024);
+    bg.addColorStop(0, '#1a1c26'); bg.addColorStop(0.5, '#12141e'); bg.addColorStop(1, '#0d0f18');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, 512, 1024);
+    // Brushed metal lines
+    ctx.strokeStyle = 'rgba(150, 160, 190, 0.18)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < 1024; y += 4) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+    }
+    // PCB trace lines
+    ctx.strokeStyle = 'rgba(255, 200, 50, 0.6)';
+    ctx.lineWidth = 2;
+    const traces = [[60,100,200,100],[200,100,200,300],[200,300,400,300],
+                    [60,500,150,500],[150,500,150,700],[150,700,350,700],
+                    [80,850,320,850],[320,850,320,950]];
+    traces.forEach(([x1,y1,x2,y2]) => {
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    });
+    // IC chips
+    const chips = [[60,80,120,60,'#1e293b','SoC A17'],[170,280,100,40,'#1e293b','LPDDR5'],
+                   [60,480,110,40,'#1e293b','DSI-IC'],[60,830,160,40,'#1e293b','PMU']];
+    chips.forEach(([x,y,w,h,bg,label]) => {
+      ctx.fillStyle = bg as string;
+      ctx.strokeStyle = 'rgba(255,200,50,0.8)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(x as number,y as number,w as number,h as number,6); ctx.fill(); ctx.stroke();
+      // Chip pins
+      ctx.strokeStyle = 'rgba(255,200,50,0.5)'; ctx.lineWidth = 1;
+      for (let p = 0; p < 5; p++) {
+        ctx.beginPath(); ctx.moveTo((x as number)+p*((w as number)/5)+4,y as number); ctx.lineTo((x as number)+p*((w as number)/5)+4,(y as number)-8); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo((x as number)+p*((w as number)/5)+4,(y as number)+(h as number)); ctx.lineTo((x as number)+p*((w as number)/5)+4,(y as number)+(h as number)+8); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,220,80,0.9)'; ctx.font = 'bold 14px monospace';
+      ctx.fillText(label as string, (x as number)+6, (y as number)+(h as number)/2+5);
+    });
+    // MIPI DSI label
+    ctx.fillStyle = 'rgba(255, 180, 50, 0.95)';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText('MIPI DSI-2  6.0 Gbps', 20, 980);
+    ctx.fillStyle = 'rgba(140, 150, 180, 0.7)';
+    ctx.font = '14px monospace';
+    ctx.fillText('Grade 5 Titanium Frame  •  LTPO Polyimide', 20, 1005);
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }
+
+  // Create glass / polarizer texture (tinted blue-cyan tint to show it's NOT empty)
+  private createGlassTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512; canvas.height = 1024;
+    const ctx = canvas.getContext('2d')!;
+    // Ice-blue tinted glass
+    const grad = ctx.createLinearGradient(0, 0, 512, 1024);
+    grad.addColorStop(0, 'rgba(200, 240, 255, 0.22)');
+    grad.addColorStop(0.3, 'rgba(180, 230, 255, 0.10)');
+    grad.addColorStop(0.7, 'rgba(200, 245, 255, 0.14)');
+    grad.addColorStop(1, 'rgba(220, 255, 255, 0.20)');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, 512, 1024);
+    // Reflection shimmer streaks
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 6; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-100 + i * 120, 0); ctx.lineTo(200 + i * 120, 1024);
+      ctx.stroke();
+    }
+    // Polarizer grid pattern (fine)
+    ctx.strokeStyle = 'rgba(150, 220, 255, 0.12)';
+    ctx.lineWidth = 0.5;
+    for (let y = 0; y < 1024; y += 8) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+    }
+    // Corner label
+    ctx.fillStyle = 'rgba(100, 220, 255, 0.95)';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText('SAPPHIRE GLASS', 20, 36);
+    ctx.fillStyle = 'rgba(180, 240, 255, 0.75)';
+    ctx.font = '14px monospace';
+    ctx.fillText('Anti-Reflective Polarizer', 20, 58);
+    ctx.fillText('IOR 1.52  •  99.4% Transmittance', 20, 78);
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }
+
   private buildLayers() {
     const width = 2.4;
     const height = 4.8;
     const geom = new THREE.PlaneGeometry(width, height);
+    const roundGeom = new THREE.PlaneGeometry(width, height, 1, 1);
 
-    const uiTex = this.createUITexture();
+    const uiTex       = this.createUITexture();
     const subpixelTex = this.createSubpixelTexture();
-    const wireframeTex = this.createWireframeTexture();
+    const wireframeTex= this.createWireframeTexture();
+    const itoTex      = this.createITOTexture();
+    const chassisTex  = this.createChassisTexture();
+    const glassTex    = this.createGlassTexture();
 
-    // 1. Sapphire Glass Material
+    // 1. Sapphire Glass — icy blue tint + sheen, clearly NOT empty
     const glassMat = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
-      transmission: 0.92,
-      opacity: 0.95,
+      map: glassTex,
+      color: 0xc8f0ff,
+      transmission: 0.55,
+      opacity: 0.82,
       transparent: true,
-      roughness: 0.05,
+      roughness: 0.03,
+      metalness: 0.0,
       ior: 1.52,
-      reflectivity: 0.8
+      reflectivity: 0.9,
+      thickness: 0.5,
+      envMapIntensity: 1.2,
     });
 
-    // 2. Composite UI Material
+    // 2. Composite UI — full vivid canvas render
     const uiMat = new THREE.MeshBasicMaterial({
       map: uiTex,
       transparent: false
     });
 
-    // 3. GPU Raster Paint Material
+    // 3. GPU Raster — bright indigo wireframe mesh (clearly visible)
     const rasterMat = new THREE.MeshStandardMaterial({
       color: 0x818cf8,
+      emissive: 0x4338ca,
+      emissiveIntensity: 0.6,
       wireframe: true,
       transparent: true,
-      opacity: 0.75,
+      opacity: 0.90,
       roughness: 0.4
     });
 
-    // 4. Layout Wireframe Material
+    // 4. Layout Wireframe — blueprint cyan on dark navy (NOT black)
     const layoutMat = new THREE.MeshBasicMaterial({
       map: wireframeTex,
       transparent: true,
-      opacity: 0.85
+      opacity: 0.95
     });
 
-    // 5. OLED Subpixel Material
+    // 5. ITO Touch Grid — cyan/amber grid, fully visible
     this.subpixelMaterial = new THREE.MeshBasicMaterial({
       map: subpixelTex,
       transparent: false
     });
-
-    // 6. Titanium Chassis Material
-    const chassisMat = new THREE.MeshStandardMaterial({
-      color: 0x11131a,
-      metalness: 0.95,
-      roughness: 0.28
+    const itoMat = new THREE.MeshBasicMaterial({
+      map: itoTex,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide
     });
 
-    const materials = [glassMat, uiMat, rasterMat, layoutMat, this.subpixelMaterial, chassisMat];
+    // 6. Titanium Chassis — logic board texture with PCB traces
+    const chassisMat = new THREE.MeshBasicMaterial({
+      map: chassisTex,
+      transparent: false
+    });
+
+    // Build 6 layer meshes with distinct materials
+    const layerMaterials = [glassMat, uiMat, rasterMat, layoutMat, this.subpixelMaterial, chassisMat];
 
     DISPLAY_LAYERS.forEach((layer, idx) => {
-      const mesh = new THREE.Mesh(geom, materials[idx]);
+      // Use larger geom for chassis to show bezel
+      const g = idx === 5 ? new THREE.PlaneGeometry(width + 0.18, height + 0.18) : geom;
+      const mesh = new THREE.Mesh(g, layerMaterials[idx]);
       mesh.name = layer.id;
       mesh.position.z = layer.zOffset * this.separationFactor;
       this.layerMeshes.push(mesh);
       this.phoneGroup.add(mesh);
     });
 
-    // Outer Titanium phone bezel
-    const bezelGeom = new THREE.BoxGeometry(width + 0.12, height + 0.12, 0.22);
+    // Add ITO layer as a separate overlay on layer 1 (glass) to show touch grid
+    // visible only as a subtle overlay, not a 7th layer card
+    const itoMesh = new THREE.Mesh(roundGeom, itoMat);
+    itoMesh.name = 'ito-overlay';
+    itoMesh.position.z = DISPLAY_LAYERS[0].zOffset * this.separationFactor + 0.01;
+    this.phoneGroup.add(itoMesh);
+
+    // Outer phone bezel frame (visible notch phone silhouette)
+    const bezelGeom = new THREE.BoxGeometry(width + 0.14, height + 0.14, 0.18);
     const bezelMat = new THREE.MeshStandardMaterial({
-      color: 0x181a24,
-      metalness: 0.92,
-      roughness: 0.3
+      color: 0x2a2d3e,
+      metalness: 0.95,
+      roughness: 0.22,
+      emissive: 0x1a1c28,
+      emissiveIntensity: 0.3
     });
     const bezelMesh = new THREE.Mesh(bezelGeom, bezelMat);
     bezelMesh.position.z = -1.2 * this.separationFactor;
     this.phoneGroup.add(bezelMesh);
+
+    // Camera notch circle on top glass
+    const notchGeom = new THREE.CircleGeometry(0.12, 32);
+    const notchMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const notchMesh = new THREE.Mesh(notchGeom, notchMat);
+    notchMesh.position.set(0, 2.1, DISPLAY_LAYERS[0].zOffset * this.separationFactor + 0.02);
+    this.phoneGroup.add(notchMesh);
   }
 
-  // Update layer separation distance (0 = collapsed into phone, 1 = fully exploded)
   public setSeparation(val: number) {
     this.separationFactor = Math.max(0, Math.min(1, val));
     DISPLAY_LAYERS.forEach((layer, idx) => {
       if (this.layerMeshes[idx]) {
         this.layerMeshes[idx].position.z = layer.zOffset * this.separationFactor;
+      }
+    });
+    // Also move ITO overlay and notch with glass layer
+    this.phoneGroup.children.forEach((child) => {
+      if (child.name === 'ito-overlay') {
+        child.position.z = DISPLAY_LAYERS[0].zOffset * this.separationFactor + 0.01;
       }
     });
   }
